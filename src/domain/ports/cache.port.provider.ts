@@ -1,0 +1,1 @@
+export const CACHE_PORT = Symbol('CACHE_PORT'); // Token único que representará CachePort
