@@ -1,6 +1,6 @@
 import { Controller, Get, Query, UsePipes } from '@nestjs/common';
 import { QueryBus } from '@nestjs/cqrs';
-import * as moment from 'moment';
+import moment from 'moment';
 import { createZodDto, ZodValidationPipe } from 'nestjs-zod';
 import { z } from 'nestjs-zod/z';
 

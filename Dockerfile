@@ -12,6 +12,8 @@ RUN yarn
 
 COPY --chown=node:node . .
 
+RUN mkdir -p /usr/src/app/dist && chown -R node:node /usr/src/app/dist
+
 USER node
 
 ###################

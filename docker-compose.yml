@@ -3,24 +3,42 @@ services:
   api:
     image: atc-challenge:dev
     build:
-      dockerfile: Dockerfile
       context: .
       target: development
-    volumes:
-      - .:/usr/src/app
-    command: npm run start:dev
+    command: sh -c "npm run start:dev" # Iniciamos la API
     ports:
       - 3000:3000
     environment:
-      ATC_BASE_URL: http://mock:4000
+      ATC_BASE_URL: http://mock:4000 # Enlace al servicio mock
+      REDIS_URL: redis://redis:6379  # Redis
+    depends_on:
+      - redis
+    networks:
+      - app-network
+
   mock:
     image: atc-challenge:dev
-    command: node /usr/src/app/mock/server.js
-    volumes:
-      - ./mock:/usr/src/app/mock
+    command: sh -c "node /usr/src/app/mock/server.js" # Iniciamos el mock
     ports:
       - 4000:4000
     environment:
       EVENT_INTERVAL_SECONDS: 10
       REQUESTS_PER_MINUTE: 60
-      EVENT_PUBLISHER_URL: http://api:3000/events
+      EVENT_PUBLISHER_URL: http://api:3000/events # Enlace al servicio API
+      REDIS_URL: redis://redis:6379
+    depends_on:
+      - api
+    networks:
+      - app-network
+
+  redis:
+    image: redis:latest
+    ports:
+      - '6379:6379'
+    networks:
+      - app-network
+
+networks:
+  app-network:
+    driver: bridge
+    name: app-network # Nombre estático asignado a la red

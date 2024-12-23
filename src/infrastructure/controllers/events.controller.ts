@@ -1,6 +1,6 @@
-import { Body, Controller, Post } from '@nestjs/common';
+import { Body, Controller, Post, Logger } from '@nestjs/common';
 import { EventBus } from '@nestjs/cqrs';
-import { UseZodGuard } from 'nestjs-zod';
+import { UseZodGuard, ZodValidationException } from 'nestjs-zod';
 import { z } from 'nestjs-zod/z';
 
 import { ClubUpdatedEvent } from '../../domain/events/club-updated.event';
@@ -43,44 +43,69 @@ export type ExternalEventDTO = z.infer<typeof ExternalEventSchema>;
 
 @Controller('events')
 export class EventsController {
+  private readonly logger = new Logger(EventsController.name);
+
   constructor(private eventBus: EventBus) {}
 
   @Post()
-  @UseZodGuard('body', ExternalEventSchema)
-  async receiveEvent(@Body() externalEvent: ExternalEventDTO) {
-    switch (externalEvent.type) {
-      case 'booking_created':
-        this.eventBus.publish(
-          new SlotBookedEvent(
-            externalEvent.clubId,
-            externalEvent.courtId,
-            externalEvent.slot,
-          ),
-        );
-        break;
-      case 'booking_cancelled':
-        this.eventBus.publish(
-          new SlotAvailableEvent(
-            externalEvent.clubId,
-            externalEvent.courtId,
-            externalEvent.slot,
-          ),
-        );
-        break;
-      case 'club_updated':
-        this.eventBus.publish(
-          new ClubUpdatedEvent(externalEvent.clubId, externalEvent.fields),
-        );
-        break;
-      case 'court_updated':
-        this.eventBus.publish(
-          new CourtUpdatedEvent(
-            externalEvent.clubId,
-            externalEvent.courtId,
-            externalEvent.fields,
-          ),
-        );
-        break;
+  async receiveEvent(@Body() body: any) {
+    this.logger.debug(
+      `Received event on /events endpoint: ${JSON.stringify(body)}`,
+    );
+
+    try {
+      const externalEvent: ExternalEventDTO = ExternalEventSchema.parse(body);
+
+      switch (externalEvent.type) {
+        case 'booking_created':
+          this.eventBus.publish(
+            new SlotBookedEvent(
+              externalEvent.clubId,
+              externalEvent.courtId,
+              externalEvent.slot,
+            ),
+          );
+          break;
+        case 'booking_cancelled':
+          this.eventBus.publish(
+            new SlotAvailableEvent(
+              externalEvent.clubId,
+              externalEvent.courtId,
+              externalEvent.slot,
+            ),
+          );
+          break;
+        case 'club_updated':
+          this.eventBus.publish(
+            new ClubUpdatedEvent(externalEvent.clubId, externalEvent.fields),
+          );
+          break;
+        case 'court_updated':
+          this.eventBus.publish(
+            new CourtUpdatedEvent(
+              externalEvent.clubId,
+              externalEvent.courtId,
+              externalEvent.fields,
+            ),
+          );
+          break;
+        default: {
+          const _exhaustiveCheck: never = externalEvent;
+          this.logger.warn(
+            `Unknown event type: ${JSON.stringify(_exhaustiveCheck)}`,
+          );
+          break;
+        }
+      }
+    } catch (error) {
+        if (error instanceof ZodValidationException) {
+          this.logger.error(
+            `Validation failed: ${JSON.stringify((error as any).issues)}`,
+          );
+        }
+        else {
+        this.logger.error('Unexpected error: ', error);
+      }
     }
   }
 }

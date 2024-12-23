@@ -1,111 +1,65 @@
-## Intro
+<h1>1. Iniciando el sistema</h1>
+Para iniciar el sistema correctamente:
+Levantar contenedores Docker: Abre una terminal en la raíz del proyecto y ejecuta el siguiente comando:
+   docker-compose up
+Cargar datos iniciales en Redis: Una vez que los contenedores estén en ejecución, en otra terminal, ejecuta:
+   node preloader.js
 
-Bienvenido/a al desafío técnico de AlquilaTuCancha. Este proyecto simula un servicio de búsqueda de disponibilidad de canchas,
-el cuál está tardando mucho y no tolera gran cantidad de solicitudes por minuto. 
+<h1>2. Cambios realizados</h1>
+Con el objetivo de mejorar el rendimiento de las consultas a los endpoints y reducir el número de llamadas repetitivas hacia las APIs externas, se realizaron las siguientes implementaciones:
+<h2>a) Sistema de caché utilizando Redis:</h2>
+El sistema de caché guarda las consultas previamente realizadas para ahorrar tiempo en consultas repetitivas.
+La clave del caché tiene el formato: availability:{placeId}:{date} Por ejemplo: availability:12345:2023-12-07.
+Los valores almacenados corresponden a los resultados en formato JSON de las consultas realizadas, que incluyen información sobre clubes, canchas, y sus horarios disponibles.
 
-El objetivo de este desafío es optimizar el servicio para que responda lo más rápido posible, con información actualizada
-y que soporte altos niveles de tráfico.
+<h2>b) Sistema de preloader:</h2>
+Se agregó un archivo preloader.js que se debe ejecutar al iniciar el sistema. Este archivo precarga información clave en el caché para responder de manera inmediata incluso a la primera consulta.
 
-## El proyecto
-
-El servicio de disponibilidad devuelve, a partir de un [Place Id](https://developers.google.com/maps/documentation/places/web-service/place-id) y fecha, todos los clubes de la zona, con sus respectivos atributos, canchas y disponibilidad. Ejemplos de respuestas se encuentran dentro de `mock/data/`.
-
-El proyecto consta de dos partes
-
-1. La API principal, sobre la que hay que trabajar y que está desarrollada en [NestJS](https://github.com/nestjs/nest) adaptada a una Arquitectura Hexagonal.
-2. Una API mock, desarrollada en JS vanilla y que **no** debe ser modificada
-
-La API mock es la fuente de verdad y a su vez nuestro cuello de botella. Los endpoints que expone son
-
-- `GET /zones`: Lista todas las zones donde tenemos clubes
-- `GET /clubs?placeId`: Lista los clubes por zona
-- `GET /clubs/:id`: Detalla un club
-- `GET /clubs/:id/courts`: Lista las canchas de un club
-- `GET /clubs/:id/courts/:id`: Detalla una cancha de un club
-- `GET /clubs/:id/courts/:id/slots?date`: Lista la disponibilidad una cancha para una fecha en particular
-
-> Estos endpoints tienen un latencia alta y la API en general tiene un límite de 60 solicitudes por minuto.
+Para mantener la arquitectura hexagonal, se implementaron cambios siguiendo este patrón:
+CachePort: Es una interfaz definida en el directorio domain/ports. Permite que el código del dominio interactúe con Redis sin romper el principio de independencia.
+cache.port.provider.ts: Proporciona un token de la interfaz CachePort.
+RedisCacheService: La implementación concreta del CachePort utiliza Redis, y está ubicada en el módulo de infrastructure>cache.
 
 
-A su vez, la API mock tiene la capacidad de avisar a la API principal cada vez que ocurren modificaciones. Los eventos posibles son los siguientes
-
-- Se ocupa un lugar (`booking_created`)
-- Se libera un lugar (`booking_cancelled`)
-- Se actualiza un club (`club_updated`)
-- Se actualiza una cancha (`court_updated`)
-
-En algunos casos, estos eventos modifican la disponibilidad de la cancha.
-Por ejemplo, cuando se ocupa un lugar en la cancha 140 el 25 de Agosto a las 10:30, la disponibilidad para esa fecha debe ser actualizada.
-Lo mismo ocurre cuando se libera un lugar.
-
-En otros casos, los eventos no modifican las disponibilidad de la cancha, pero sí la información estática. Por ejemplo, si se cambia el nombre
-de la cancha 140, el servicio debe reflejar el nuevo nombre
-
-**Atención**: cuando se actualiza un club, dependiendo de los atributos a actualizar, puede que modifique o no la disponibilidad. Hay un atributo
-especial llamado `open_hours` que refleja el horario de apertura y cierre de los complejos según el día de la semana, si este cambia, puede afectar la disponibilidad. El resto de los atributos no modifican la disponibilidad
+La api principal, Redis y mock ahora son parte de los servicios levantados por Docker y está configurado en la misma red que los demás componentes del sistema (app-network), esto facilita el arranque del sistema y la comunicacion entre los componentes.
+Puedes revisar estos cambios en el archivo docker-compose.yml. 
 
 
-> Un evento al azar ocurre cada 10 segundos. Durante el desarrollo se puede modificar el intervalo a gusto a través de la variable
-> de entorno `EVENT_INTERVAL_SECONDS`, pero la solución debe funcionar independientemente del valor
 
-## Resolviendo el challenge
+<h1>3. Trabajo pendiente</h1>
 
-### Correr el proyecto
+<h2>a) Limpieza automática del caché:</h2>
+Actualmente, los datos en el caché no tienen un tiempo de expiración, lo cual puede generar un uso excesivo de memoria.
+Existe un método en CachePort que permite limpiar todo el caché manualmente, pero no se ha implementado un mecanismo automatizado (como un cron job) para ejecutarlo periódicamente. 
 
-Clonar el repositorio e instalar las dependencias con
+<h2>b) Manejo de actualizaciones en el caché:</h2>
+Las actualizaciones dinámicas en las entradas del caché no están configuradas actualmente.
+Propuesta:
+Sobrescribir los datos del caché basándose en eventos recibidos.
+Evitar el abuso de solicitudes hacia la API actuando exclusivamente sobre los datos que ya están en el caché.
 
-```bash
-$ yarn
-```
+<h2>c) Preloader dinámico:</h2>
+Actualmente, el script preloader.js usa valores hardcodeados (placeId y date) para cargar información en el caché.
+Lo que queda es hacer el script dinámico, obteniendo dinámicamente los placeId que tienen más consultas históricas o basándose en patrones de uso.
 
-El proyecto se puede levantar con `docker-compose` o desde el host como lo indica la documentación de [NestJS](https://docs.nestjs.com/).
-Nota: Si se corre desde el host también hay que correr en paralelo la API mock.
+<h1>4. Archivos de utilidades:</h1>
+Algunos archivos fueron usados para comprobar que los caches se almacenaban y interactuaban bien con el sistema de forma manual, como por ejemplo app.controller.ts , el unico fin de ese archivo es comprobar que los caches funcionan. Via navegador.
+Por ejemplo
+<h3>http://localhost:3000/redis-set?key=test-key&value=HolaCaché <br><br> (Se espera que salga mensaje de confirmacion de guardado) </h3><br>
+<h3>http://localhost:3000/redis-get?key=test-key <br><br> (Se espera "HolaCaché")</h3><br>
+<h3>http://localhost:3000/redis-clear <br><br> (Se espera mensaje de confirmacion)</h3><br>
+<h3>http://localhost:3000/redis-get?key=test-key <br><br> (Se espera mensaje de que no hay dato disponible para test-key)</h3><br>
 
-La versión de node utilizada se encuentra definida en el `package.json` y en `.nvmrc` en caso de que uses `nvm`.
+<h1>5. Métricas de rendimiento</h1>
+Antes de implementar este sistema, las consultas al endpoint principal tenían un rendimiento muy bajo:
+<h3>Endpoint evaluado: GET http://localhost:3000/search</h3>
+<h3>Datos de prueba: </h3>
+<h3>placeId:ChIJoYUAHyvmopUR4xJzVPBE_Lw</h3>
+<h3>date:2022-08-25</h3>
+<h3>URL:http://localhost:3000/search?placeId=ChIJoYUAHyvmopUR4xJzVPBE_Lw&date=2022-08-25</h3>
 
-### Modificar
-
-Los puntos de entrada y salida de la API ya están desarrollados, aunque se espera que se le hagan modificaciones
-
-1. `AlquilaTuCanchaClient`: donde se hace la comunicación desde la API principal a la API mock
-2. `EventsController`: donde se reciben los eventos desde la API mock
-2. `SearchController`: donde se inicia la consulta de disponibilidad (la lógica se encuentra en `GetAvailabilityHandler`)
-
-Requests de ejemplo
-
-```bash
-curl "localhost:3000/search?placeId=ChIJW9fXNZNTtpURV6VYAumGQOw&date=2022-08-25"
-curl "localhost:3000/search?placeId=ChIJW9fXNZNTtpURV6VYAumGQOw&date=2022-08-25"
-```
-
-
-### Entregar
-
-El método de entrega es a través de un pull request a este repositorio.
-
-1. [Hacer un fork](https://help.github.com/articles/fork-a-repo/) de este repositorio
-2. [Crear un pull request](https://help.github.com/articles/creating-a-pull-request-from-a-fork/)
-3. En la descripción del pull request se aprecia documentar decisiones, investigaciones, supociones o iteraciones futuras
-
-Las consultas se pueden hacer por privado o creando un issue en este repositorio
+<h3>Tiempos de respuesta antes: 18 segundos por consulta.</h3><br>
+<h3>Tiempos de respuesta después: 20ms aproximado por consulta.</h3>
 
 
-Qué vamos a evaluar? La idea es que este desafío se asemeje lo máximo posible a una tarea del día a día, por eso proveemos un proyecto con una aplicación ya configurada y lista para modificar. Esto significa que
 
-- Se espera que se agreguen tests que comprueben el correcto funcionamiento de lo desarrollado
-- Se espera que se entienda y se respete la arquitectura de la aplicación
-- Si se decide investigar técnicas y/o patrones para resolver este problema, está perfecto y nos gustaría saber los links consultados
-- Son bienvenidas las consultas, como en cualquier equipo resolvemos las cosas juntos
-- En caso de falta de tiempo, se valora la priorización para atacar lo más importante y documentar lo que faltaría
-
-
-## Reglas y tips
-
-- No se puede modificar la API mock para resolver el desafío
-- Asumir que sólo se recibirán consultas para fechas dentro de los próximos 7 días
-- Asumir que la API mock puede estar caída en todo momento
-- Es preferible devolver resultados desactualizados que no devolver nada
-- Se puede modificar el `docker-compose.yml` para agregar cualquier dependencia que se necesite
-- No hace falta implementar lógica de disponibilidad al reaccionar a los eventos, siempre se puede consultar la disponibilidad actualizada a la API mock por cancha y fecha 
-- A modo de comprobación hay un endpoint en la API mock (`/test?placeId&date`) que devuelve la disponibilidad como debería ser devuelta por la API principal
-- No se puede usar el endpoint de test de la API mock para resolver el desafío

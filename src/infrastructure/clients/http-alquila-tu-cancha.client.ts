@@ -1,7 +1,7 @@
 import { HttpService } from '@nestjs/axios';
 import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import * as moment from 'moment';
+import moment from 'moment';
 
 import { Club } from '../../domain/model/club';
 import { Court } from '../../domain/model/court';
